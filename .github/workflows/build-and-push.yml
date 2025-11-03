@@ -17,27 +17,37 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  REGISTRY_HOST: registry.agentsmp.com
-  # change if your registry uses a different project/namespace
-  REGISTRY_NAMESPACE: agentsmp
-  # final repo name will be: registry.agentsmp.com/<namespace>/<repo>
-  IMAGE_NAME: ${{ toLower(format('{0}/{1}', env.REGISTRY_NAMESPACE, github.event.repository.name)) }}
-
-  # ✅ your paths:
+  REGISTRY_HOST: registry.agentsmp.com           # your registry host
+  REGISTRY_NAMESPACE: agentsmp                   # <-- change if your namespace differs
   DOCKER_CONTEXT: .
   DOCKERFILE_PATH: ./Dockerfile
 
 jobs:
   build-and-push:
-    name: Build (PR) / Build & Push (main,tags)
+    name: Build (PR) / Build & Push (main, tags)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Multi-arch (remove arm64 later if you don't need it)
+      # Compute image name safely (lowercase) and expose to later steps
+      - name: Compute image name
+        id: imagename
+        shell: bash
+        run: |
+          REPO="${{ github.event.repository.name }}"
+          NS="${{ env.REGISTRY_NAMESPACE }}"
+          # lower-case the repo name (bash parameter expansion)
+          REPO_LC="${REPO,,}"
+          IMAGE_NAME="${NS}/${REPO_LC}"
+          IMAGE_REF="${{ env.REGISTRY_HOST }}/${IMAGE_NAME}"
+          echo "IMAGE_NAME=${IMAGE_NAME}" >> "$GITHUB_ENV"
+          echo "IMAGE_REF=${IMAGE_REF}"   >> "$GITHUB_ENV"
+          echo "Computed image ref: ${IMAGE_REF}"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -48,23 +58,23 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - name: Derive tags and labels
+      - name: Extract Docker metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.IMAGE_REF }}
           tags: |
-            # version tags like v1.2.3 -> 1.2.3, 1.2, 1, latest
+            # On version tags like v1.2.3 -> 1.2.3, 1.2, 1, latest
             type=ref,event=tag,enable=true
             type=semver,pattern={{version}},prefix=,enable={{ startsWith(github.ref, 'refs/tags/v') }}
             type=semver,pattern={{major}}.{{minor}},prefix=,enable={{ startsWith(github.ref, 'refs/tags/v') }}
             type=semver,pattern={{major}},prefix=,enable={{ startsWith(github.ref, 'refs/tags/v') }}
             type=raw,value=latest,enable={{ startsWith(github.ref, 'refs/tags/v') }}
-            # main branch -> main-<shortSHA> (and optional 'main')
+            # On main branch -> main-<shortSHA> (and optional 'main')
             type=raw,value=main,enable={{ github.ref == 'refs/heads/main' }}
             type=sha,format=short,prefix=main-,enable={{ github.ref == 'refs/heads/main' }}
 
-      # Build only on PRs (no push)
+      # Build only (no push) for PRs
       - name: Build image (PR only)
         if: github.event_name == 'pull_request'
         uses: docker/build-push-action@v6
@@ -78,7 +88,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Build + Push on main or semver tags
+      # Build & push on main or version tags
       - name: Build and push image
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         uses: docker/build-push-action@v6
