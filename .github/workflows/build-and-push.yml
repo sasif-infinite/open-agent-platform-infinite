@@ -19,7 +19,6 @@ concurrency:
 env:
   REGISTRY_HOST: registry.agentsmp.com
   REGISTRY_NAMESPACE: agentsmp
-  # ⬇️ rename to avoid clash with Docker's DOCKER_CONTEXT
   BUILD_CONTEXT: .
   DOCKERFILE_PATH: ./Dockerfile
 
@@ -41,11 +40,7 @@ jobs:
           IMAGE_REF="${{ env.REGISTRY_HOST }}/${IMAGE_NAME}"
           echo "IMAGE_NAME=${IMAGE_NAME}" >> "$GITHUB_ENV"
           echo "IMAGE_REF=${IMAGE_REF}"   >> "$GITHUB_ENV"
-          # ensure we are on Docker's default context
           echo "DOCKER_CONTEXT=default"   >> "$GITHUB_ENV"
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -63,24 +58,48 @@ jobs:
         with:
           images: ${{ env.IMAGE_REF }}
           tags: |
-            # When pushing a tag like v1.2.3 -> 1.2.3, 1.2, 1, latest
+            # release tags like v1.2.3 -> 1.2.3, 1.2, 1, latest
             type=ref,event=tag
             type=semver,pattern={{version}},prefix=,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=semver,pattern={{major}}.{{minor}},prefix=,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=semver,pattern={{major}},prefix=,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            # On main branch -> main and main-<shortSHA>
+            # main branch -> main and main-<shortSHA>
             type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,format=short,prefix=main-,enable=${{ github.ref == 'refs/heads/main' }}
 
+      # Build only on PRs (no push)
       - name: Build image (PR only)
         if: github.event_name == 'pull_request'
         uses: docker/build-push-action@v6
         with:
-          context: ${{ env.BUILD_CONTEXT }}     # ⬅️ use BUILD_CONTEXT
+          context: ${{ env.BUILD_CONTEXT }}
           file: ${{ env.DOCKERFILE_PATH }}
           push: false
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Build & push on main branch, tags, or manual dispatch
+      - name: Build and push image
+        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.BUILD_CONTEXT }}
+          file: ${{ env.DOCKERFILE_PATH }}
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NODE_ENV=production
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Show image references
+        if: success() && (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        run: |
+          echo "Published tags:"
+          echo "${{ steps.meta.outputs.tags }}"
