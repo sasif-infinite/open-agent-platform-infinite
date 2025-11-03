@@ -1,0 +1,101 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: build-and-push-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY_HOST: registry.agentsmp.com
+  # change if your registry uses a different project/namespace
+  REGISTRY_NAMESPACE: agentsmp
+  # final repo name will be: registry.agentsmp.com/<namespace>/<repo>
+  IMAGE_NAME: ${{ toLower(format('{0}/{1}', env.REGISTRY_NAMESPACE, github.event.repository.name)) }}
+
+  # ✅ your paths:
+  DOCKER_CONTEXT: .
+  DOCKERFILE_PATH: ./Dockerfile
+
+jobs:
+  build-and-push:
+    name: Build (PR) / Build & Push (main,tags)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Multi-arch (remove arm64 later if you don't need it)
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_HOST }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Derive tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # version tags like v1.2.3 -> 1.2.3, 1.2, 1, latest
+            type=ref,event=tag,enable=true
+            type=semver,pattern={{version}},prefix=,enable={{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},prefix=,enable={{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{major}},prefix=,enable={{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=latest,enable={{ startsWith(github.ref, 'refs/tags/v') }}
+            # main branch -> main-<shortSHA> (and optional 'main')
+            type=raw,value=main,enable={{ github.ref == 'refs/heads/main' }}
+            type=sha,format=short,prefix=main-,enable={{ github.ref == 'refs/heads/main' }}
+
+      # Build only on PRs (no push)
+      - name: Build image (PR only)
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.DOCKER_CONTEXT }}
+          file: ${{ env.DOCKERFILE_PATH }}
+          push: false
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Build + Push on main or semver tags
+      - name: Build and push image
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.DOCKER_CONTEXT }}
+          file: ${{ env.DOCKERFILE_PATH }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NODE_ENV=production
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Show image references
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        run: |
+          echo "Published tags:"
+          echo "${{ steps.meta.outputs.tags }}"
