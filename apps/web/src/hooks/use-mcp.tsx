@@ -1,9 +1,27 @@
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { SUPPORTED_PROTOCOL_VERSIONS } from "@modelcontextprotocol/sdk/types.js";
 import { Tool } from "@/types/tool";
 import { useState } from "react";
 
+// Ensure we accept the server's advertised protocol version.
+const SERVER_PROTOCOL_VERSION = "2025-06-18";
+if (!SUPPORTED_PROTOCOL_VERSIONS.includes(SERVER_PROTOCOL_VERSION)) {
+  SUPPORTED_PROTOCOL_VERSIONS.unshift(SERVER_PROTOCOL_VERSION);
+}
+
 function getMCPUrlOrThrow() {
+  const authRequired = process.env.NEXT_PUBLIC_MCP_AUTH_REQUIRED === "true";
+  
+  // If auth is not required, use the direct MCP server URL
+  if (!authRequired && process.env.NEXT_PUBLIC_MCP_SERVER_URL) {
+    const baseUrl = process.env.NEXT_PUBLIC_MCP_SERVER_URL.endsWith("/")
+      ? process.env.NEXT_PUBLIC_MCP_SERVER_URL.slice(0, -1)
+      : process.env.NEXT_PUBLIC_MCP_SERVER_URL;
+    return new URL(`${baseUrl}/mcp`);
+  }
+
+  // Otherwise use the proxy route
   if (!process.env.NEXT_PUBLIC_BASE_API_URL) {
     throw new Error("NEXT_PUBLIC_BASE_API_URL is not defined");
   }

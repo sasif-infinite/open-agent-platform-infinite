@@ -18,6 +18,7 @@ services:
     depends_on:
       - tool-agent
       - api
+      - mcp
     # Make Next.js bind to all interfaces & pin Yarn via Corepack
     command: >
       sh -lc "corepack enable &&
@@ -62,7 +63,7 @@ services:
 
   api:
     build:
-      context: ../langconnect
+      context: ../langconnect-infinite
       dockerfile: Dockerfile
     container_name: langconnect-api
     restart: always
@@ -72,7 +73,7 @@ services:
     ports:
       - "8080:8080"
     env_file:
-      - ../langconnect/.env
+      - ../langconnect-infinite/.env
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -85,17 +86,23 @@ services:
       open-agent-network:
         ipv4_address: 172.23.0.20
 
-  # rag:
-  #   build:
-  #     context: ../langconnect
-  #     dockerfile: Dockerfile
-  #   ports:
-  #     - "8080:8080"                # optional: for host testing; not needed for internal-only
-  #   env_file:
-  #     - ../langconnect/.env         # adjust if your env path/name differs
-  #   networks:
-  #     open-agent-network:
-  #       ipv4_address: 172.23.0.20
+  mcp:
+    build:
+      context: ../mcp
+      dockerfile: Dockerfile
+    container_name: oap-mcp-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8000
+      MCP_SECRET: "weather-mcp-secret-key-change-in-production"
+    command: >
+      python -m mcp_server.server http --host 0.0.0.0 --port 8000
+    networks:
+      open-agent-network:
+        ipv4_address: 172.23.0.21
 
 networks:
   open-agent-network:

@@ -1,0 +1,18 @@
+# Exclude host-side node modules and build artifacts from docker build context
+node_modules
+**/node_modules
+apps/**/node_modules
+apps/web/node_modules
+.next
+apps/**/.next
+.turbo
+.pnp.*
+.cache
+dist
+build
+coverage
+/.git
+.git
+.vscode
+.DS_Store
+/.venv
