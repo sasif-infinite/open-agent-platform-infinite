@@ -317,6 +317,7 @@ export function Thread() {
           configurable: {
             ...getAgentConfig(agentId),
             apiKeys,
+            "x-supabase-access-token": session?.accessToken,
           },
         },
         metadata: {
@@ -347,6 +348,7 @@ export function Thread() {
         configurable: {
           ...getAgentConfig(agentId),
           apiKeys,
+          "x-supabase-access-token": session?.accessToken,
         },
       },
       optimisticValues,

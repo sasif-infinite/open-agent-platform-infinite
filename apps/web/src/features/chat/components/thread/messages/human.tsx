@@ -78,7 +78,10 @@ export function HumanMessage({
           };
         },
         config: {
-          configurable: getAgentConfig(agentId),
+          configurable: {
+            ...getAgentConfig(agentId),
+            "x-supabase-access-token": session?.accessToken,
+          },
         },
         metadata: {
           supabaseAccessToken: session?.accessToken,

@@ -65,19 +65,35 @@ async function getOrCreateDefaultAssistants(
     }),
   ]);
 
+  const systemGraphIds = new Set(
+    systemDefaultAssistants.map((assistant) => assistant.graph_id),
+  );
+
+  // Deduplicate and scope user defaults to the system graphs we care about.
+  const filteredUserDefaultAssistants: typeof userDefaultAssistants = [];
+  const seenGraphs = new Set<string>();
+  for (const assistant of userDefaultAssistants) {
+    if (!systemGraphIds.has(assistant.graph_id)) continue;
+    if (seenGraphs.has(assistant.graph_id)) continue;
+    seenGraphs.add(assistant.graph_id);
+    filteredUserDefaultAssistants.push(assistant);
+  }
+
   if (!systemDefaultAssistants.length) {
     throw new Error("Failed to find default system assistants.");
   }
 
-  if (systemDefaultAssistants.length === userDefaultAssistants.length) {
+  if (systemDefaultAssistants.length === filteredUserDefaultAssistants.length) {
     // User has already created all default assistants.
-    return userDefaultAssistants;
+    return filteredUserDefaultAssistants;
   }
 
   // Find all assistants which are created by the system, but do not have a corresponding user defined default assistant.
   const missingDefaultAssistants = systemDefaultAssistants.filter(
     (assistant) =>
-      !userDefaultAssistants.some((a) => a.graph_id === assistant.graph_id),
+      !filteredUserDefaultAssistants.some(
+        (a) => a.graph_id === assistant.graph_id,
+      ),
   );
 
   // Create a new client, passing in the access token to use user scoped auth.
@@ -99,7 +115,7 @@ async function getOrCreateDefaultAssistants(
   );
 
   const newUserDefaultAssistants = [
-    ...userDefaultAssistants,
+    ...filteredUserDefaultAssistants,
     ...(await Promise.all(newUserDefaultAssistantsPromise)),
   ];
 
