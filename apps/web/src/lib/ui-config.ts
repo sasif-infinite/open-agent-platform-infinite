@@ -93,6 +93,10 @@ function configSchemaToToolsConfig(
     return [];
   }
 
+  const mcpServerUrl =
+    process.env.NEXT_PUBLIC_MCP_SERVER_INTERNAL_URL ??
+    process.env.NEXT_PUBLIC_MCP_SERVER_URL;
+
   const fields: ConfigurableFieldMCPMetadata[] = [];
   for (const [key, value] of Object.entries(schema.properties)) {
     const uiConfig = getUiConfig(value);
@@ -100,7 +104,7 @@ function configSchemaToToolsConfig(
       continue;
     }
 
-    if (!process.env.NEXT_PUBLIC_MCP_SERVER_URL) {
+    if (!mcpServerUrl) {
       toast.error("Can not configure MCP tool without MCP server URL", {
         richColors: true,
       });
@@ -111,7 +115,7 @@ function configSchemaToToolsConfig(
       label: key,
       type: uiConfig.type,
       default: {
-        url: process.env.NEXT_PUBLIC_MCP_SERVER_URL,
+        url: mcpServerUrl,
         tools: [],
         auth_required: process.env.NEXT_PUBLIC_MCP_AUTH_REQUIRED === "true",
         ...(uiConfig.default ?? {}),

@@ -23,6 +23,30 @@ function getApiUrlOrThrow(): URL {
   return new URL(process.env.NEXT_PUBLIC_RAG_API_URL);
 }
 
+function buildApiUrl(
+  path: string,
+  searchParams?: Record<string, string | number | undefined>,
+): URL {
+  const base = getApiUrlOrThrow();
+  const normalizedBasePath = base.pathname.endsWith("/")
+    ? base.pathname.slice(0, -1)
+    : base.pathname;
+  const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
+  const url = new URL(base.toString());
+  url.pathname = [normalizedBasePath, normalizedPath].filter(Boolean).join("/");
+  url.search = "";
+
+  if (searchParams) {
+    Object.entries(searchParams).forEach(([key, value]) => {
+      if (value !== undefined) {
+        url.searchParams.set(key, String(value));
+      }
+    });
+  }
+
+  return url;
+}
+
 export function getCollectionName(name: string | undefined) {
   if (!name) return "";
   return name === DEFAULT_COLLECTION_NAME ? "Default" : name;
@@ -44,7 +68,9 @@ async function uploadDocuments(
   authorization: string,
   metadatas?: Record<string, any>[],
 ): Promise<any> {
-  const url = `${getApiUrlOrThrow().href}collections/${encodeURIComponent(collectionId)}/documents`;
+  const url = buildApiUrl(
+    `collections/${encodeURIComponent(collectionId)}/documents`,
+  ).toString();
 
   const formData = new FormData();
 
@@ -213,14 +239,15 @@ export function useRag(): UseRagReturn {
         return [];
       }
 
-      const url = getApiUrlOrThrow();
-      url.pathname = "/admin/initialize-database";
-      const response = await fetch(url.toString(), {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken || session?.accessToken}`,
+      const response = await fetch(
+        buildApiUrl("admin/initialize-database").toString(),
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken || session?.accessToken}`,
+          },
         },
-      });
+      );
       if (!response.ok) {
         throw new Error(
           `Failed to initialize database: ${response.statusText}`,
@@ -248,14 +275,10 @@ export function useRag(): UseRagReturn {
         return [];
       }
 
-      const url = getApiUrlOrThrow();
-      url.pathname = `/collections/${collectionId}/documents`;
-      if (args?.limit) {
-        url.searchParams.set("limit", args.limit.toString());
-      }
-      if (args?.offset) {
-        url.searchParams.set("offset", args.offset.toString());
-      }
+      const url = buildApiUrl(`collections/${collectionId}/documents`, {
+        limit: args?.limit,
+        offset: args?.offset,
+      });
 
       const response = await fetch(url.toString(), {
         headers: {
@@ -285,8 +308,9 @@ export function useRag(): UseRagReturn {
         throw new Error("No collection selected");
       }
 
-      const url = getApiUrlOrThrow();
-      url.pathname = `/collections/${selectedCollection.uuid}/documents/${id}`;
+      const url = buildApiUrl(
+        `collections/${selectedCollection.uuid}/documents/${id}`,
+      );
 
       const response = await fetch(url.toString(), {
         method: "DELETE",
@@ -394,8 +418,7 @@ export function useRag(): UseRagReturn {
         return [];
       }
 
-      const url = getApiUrlOrThrow();
-      url.pathname = "/collections";
+      const url = buildApiUrl("collections");
 
       const response = await fetch(url.toString(), {
         headers: {
@@ -425,8 +448,7 @@ export function useRag(): UseRagReturn {
         return;
       }
 
-      const url = getApiUrlOrThrow();
-      url.pathname = "/collections";
+      const url = buildApiUrl("collections");
 
       const trimmedName = name.trim();
       if (!trimmedName) {
@@ -510,8 +532,7 @@ export function useRag(): UseRagReturn {
         return undefined;
       }
 
-      const url = getApiUrlOrThrow();
-      url.pathname = `/collections/${collectionId}`;
+      const url = buildApiUrl(`collections/${collectionId}`);
 
       const updateData = {
         name: trimmedNewName,
@@ -571,8 +592,7 @@ export function useRag(): UseRagReturn {
         return;
       }
 
-      const url = getApiUrlOrThrow();
-      url.pathname = `/collections/${collectionId}`;
+      const url = buildApiUrl(`collections/${collectionId}`);
 
       const response = await fetch(url.toString(), {
         method: "DELETE",
