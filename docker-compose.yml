@@ -6,10 +6,6 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3000:3000"                # browser entrypoint
-    volumes:
-      - .:/app:cached              # hot reload
-      - /app/node_modules          # keep container-installed deps
-      - /app/.next                 # avoid host/.next conflicts
     env_file:
       - apps/web/.env
     networks:
@@ -19,11 +15,13 @@ services:
       - tool-agent
       - api
       - mcp
-    # Make Next.js bind to all interfaces & pin Yarn via Corepack
+    environment:
+      NODE_ENV: production
+    # Run the Next.js app in production mode using the image build artifacts
     command: >
       sh -lc "corepack enable &&
               corepack prepare yarn@3.5.1 --activate &&
-              yarn workspace @open-agent-platform/web dev -H 0.0.0.0"
+              yarn workspace @open-agent-platform/web start"
 
   tool-agent:
     build:

@@ -26,12 +26,13 @@ function buildTargetUrl(req: NextRequest, path: string[] = []): URL {
 
 async function handler(
   req: NextRequest,
-  { params }: { params: { path: string[] } },
-): Promise<NextResponse> {
+  { params }: { params: Promise<{ path: string[] }> },
+): Promise<Response> {
   let targetUrl: URL;
 
   try {
-    targetUrl = buildTargetUrl(req, params?.path ?? []);
+    const { path } = await params;
+    targetUrl = buildTargetUrl(req, path ?? []);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to build target URL";
@@ -68,5 +69,45 @@ async function handler(
   }
 }
 
-export { handler as GET, handler as POST, handler as PUT, handler as PATCH };
-export { handler as DELETE, handler as HEAD, handler as OPTIONS };
+export function GET(
+  req: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return handler(req, context);
+}
+export function POST(
+  req: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return handler(req, context);
+}
+export function PUT(
+  req: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return handler(req, context);
+}
+export function PATCH(
+  req: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return handler(req, context);
+}
+export function DELETE(
+  req: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return handler(req, context);
+}
+export function HEAD(
+  req: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return handler(req, context);
+}
+export function OPTIONS(
+  req: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return handler(req, context);
+}
