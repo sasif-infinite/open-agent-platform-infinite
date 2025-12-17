@@ -26,12 +26,12 @@ function buildTargetUrl(req: NextRequest, path: string[] = []): URL {
 
 async function handler(
   req: NextRequest,
-  context: { params: { path?: string[] } },
-): Promise<Response> {
+  { params }: { params: { path: string[] } },
+): Promise<NextResponse> {
   let targetUrl: URL;
 
   try {
-    targetUrl = buildTargetUrl(req, context.params.path ?? []);
+    targetUrl = buildTargetUrl(req, params?.path ?? []);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to build target URL";
