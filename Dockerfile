@@ -8,6 +8,12 @@ WORKDIR /app
 COPY package.json yarn.lock ./
 COPY .yarnrc.yml .yarnrc.yml
 
+# Supabase env needed at build-time for Next.js prerendering
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+
 COPY apps/ ./apps/
 # COPY packages/ ./packages/
 COPY turbo.json ./
