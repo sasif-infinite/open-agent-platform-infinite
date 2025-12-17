@@ -17,6 +17,11 @@ RUN yarn install --immutable
 
 COPY . .
 
+ENV NODE_ENV=production
+
+# Build the web workspace
+RUN yarn workspace @open-agent-platform/web build
+
 EXPOSE 3000
 
-CMD ["yarn", "start"]
+CMD ["yarn", "workspace", "@open-agent-platform/web", "start"]
