@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { generateJWTToken } from "@/lib/jwt-utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +26,36 @@ function buildTargetUrl(req: NextRequest, path: string[] = []): URL {
   return url;
 }
 
+async function getSupabaseUser(req: NextRequest) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    return null;
+  }
+
+  try {
+    const supabase = createServerClient(supabaseUrl, supabaseKey, {
+      cookies: {
+        get(name: string) {
+          return req.cookies.get(name)?.value;
+        },
+        set() {},
+        remove() {},
+      },
+    });
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    
+    return session?.user || null;
+  } catch (error) {
+    console.error("Error getting Supabase user:", error);
+    return null;
+  }
+}
+
 async function handler(
   req: NextRequest,
   context: { params: { path?: string[] } },
@@ -40,6 +72,35 @@ async function handler(
 
   const headers = new Headers(req.headers);
   headers.delete("host");
+
+  // Get user from Supabase session and generate JWT token
+  const user = await getSupabaseUser(req);
+  if (user) {
+    try {
+      const jwtToken = await generateJWTToken(
+        user.id,
+        user.email || "unknown@example.com",
+        {
+          name: user.user_metadata?.name || user.email,
+        }
+      );
+      
+      // Add JWT token to Authorization header
+      headers.set("Authorization", `Bearer ${jwtToken}`);
+    } catch (error) {
+      console.error("Error generating JWT token:", error);
+      return NextResponse.json(
+        { message: "Failed to generate authentication token" },
+        { status: 500 }
+      );
+    }
+  } else {
+    // No user session found
+    return NextResponse.json(
+      { message: "Authentication required" },
+      { status: 401 }
+    );
+  }
 
   const init: RequestInit = { method: req.method, headers };
   if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {

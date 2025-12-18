@@ -2,6 +2,8 @@ import { validate } from "uuid";
 import { initApiPassthrough } from "langgraph-nextjs-api-passthrough";
 import { NextRequest } from "next/server";
 import { getDeployments } from "@/lib/environment/deployments";
+import { createServerClient } from "@supabase/ssr";
+import { generateJWTToken } from "@/lib/jwt-utils";
 
 /**
  * The 'langgraph-nextjs-api-passthrough' package is used to implement a proxy
@@ -51,6 +53,67 @@ function isProxyRouteEnabled() {
 }
 
 /**
+ * Get Supabase user from the request
+ */
+async function getSupabaseUser(req: NextRequest) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    return null;
+  }
+
+  try {
+    const supabase = createServerClient(supabaseUrl, supabaseKey, {
+      cookies: {
+        get(name: string) {
+          return req.cookies.get(name)?.value;
+        },
+        set() {},
+        remove() {},
+      },
+    });
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    
+    return session?.user || null;
+  } catch (error) {
+    console.error("Error getting Supabase user:", error);
+    return null;
+  }
+}
+
+/**
+ * Generate JWT token and add to request headers
+ */
+async function addJWTAuthHeader(req: NextRequest): Promise<Headers | null> {
+  const user = await getSupabaseUser(req);
+  
+  if (!user) {
+    return null;
+  }
+
+  try {
+    const jwtToken = await generateJWTToken(
+      user.id,
+      user.email || "unknown@example.com",
+      {
+        name: user.user_metadata?.name || user.email,
+      }
+    );
+    
+    const headers = new Headers(req.headers);
+    headers.set("Authorization", `Bearer ${jwtToken}`);
+    return headers;
+  } catch (error) {
+    console.error("Error generating JWT token:", error);
+    return null;
+  }
+}
+
+/**
  * Finds the deployment URL based on the path parameters. If the first item in the
  * _path array is not a valid UUID, or if the deployment is not found, returns null.
  * @param params The request parameters containing the path segments.
@@ -87,6 +150,19 @@ export async function GET(req: NextRequest, { params }: RequestParams) {
     return new Response("Proxy route not enabled", { status: 403 });
   }
 
+  // Add JWT authentication header
+  const authHeaders = await addJWTAuthHeader(req);
+  if (!authHeaders) {
+    return new Response("Authentication required", { status: 401 });
+  }
+
+  // Create new request with JWT token
+  const authedReq = new NextRequest(req.url, {
+    method: req.method,
+    headers: authHeaders,
+    body: req.body,
+  });
+
   const { GET } = initApiPassthrough({
     apiKey: process.env.LANGSMITH_API_KEY,
     apiUrl: urlAndRoute.url,
@@ -94,7 +170,7 @@ export async function GET(req: NextRequest, { params }: RequestParams) {
     disableWarningLog: true,
   });
 
-  return GET(req);
+  return GET(authedReq);
 }
 
 export async function POST(req: NextRequest, { params }: RequestParams) {
@@ -107,6 +183,19 @@ export async function POST(req: NextRequest, { params }: RequestParams) {
     return new Response("Proxy route not enabled", { status: 403 });
   }
 
+  // Add JWT authentication header
+  const authHeaders = await addJWTAuthHeader(req);
+  if (!authHeaders) {
+    return new Response("Authentication required", { status: 401 });
+  }
+
+  // Create new request with JWT token
+  const authedReq = new NextRequest(req.url, {
+    method: req.method,
+    headers: authHeaders,
+    body: req.body,
+  });
+
   const { POST } = initApiPassthrough({
     apiKey: process.env.LANGSMITH_API_KEY,
     apiUrl: urlAndRoute.url,
@@ -114,7 +203,7 @@ export async function POST(req: NextRequest, { params }: RequestParams) {
     disableWarningLog: true,
   });
 
-  return POST(req);
+  return POST(authedReq);
 }
 
 export async function PUT(req: NextRequest, { params }: RequestParams) {
@@ -127,6 +216,19 @@ export async function PUT(req: NextRequest, { params }: RequestParams) {
     return new Response("Proxy route not enabled", { status: 403 });
   }
 
+  // Add JWT authentication header
+  const authHeaders = await addJWTAuthHeader(req);
+  if (!authHeaders) {
+    return new Response("Authentication required", { status: 401 });
+  }
+
+  // Create new request with JWT token
+  const authedReq = new NextRequest(req.url, {
+    method: req.method,
+    headers: authHeaders,
+    body: req.body,
+  });
+
   const { PUT } = initApiPassthrough({
     apiKey: process.env.LANGSMITH_API_KEY,
     apiUrl: urlAndRoute.url,
@@ -134,7 +236,7 @@ export async function PUT(req: NextRequest, { params }: RequestParams) {
     disableWarningLog: true,
   });
 
-  return PUT(req);
+  return PUT(authedReq);
 }
 
 export async function PATCH(req: NextRequest, { params }: RequestParams) {
@@ -147,6 +249,19 @@ export async function PATCH(req: NextRequest, { params }: RequestParams) {
     return new Response("Proxy route not enabled", { status: 403 });
   }
 
+  // Add JWT authentication header
+  const authHeaders = await addJWTAuthHeader(req);
+  if (!authHeaders) {
+    return new Response("Authentication required", { status: 401 });
+  }
+
+  // Create new request with JWT token
+  const authedReq = new NextRequest(req.url, {
+    method: req.method,
+    headers: authHeaders,
+    body: req.body,
+  });
+
   const { PATCH } = initApiPassthrough({
     apiKey: process.env.LANGSMITH_API_KEY,
     apiUrl: urlAndRoute.url,
@@ -154,7 +269,7 @@ export async function PATCH(req: NextRequest, { params }: RequestParams) {
     disableWarningLog: true,
   });
 
-  return PATCH(req);
+  return PATCH(authedReq);
 }
 
 export async function DELETE(req: NextRequest, { params }: RequestParams) {
@@ -167,6 +282,19 @@ export async function DELETE(req: NextRequest, { params }: RequestParams) {
     return new Response("Proxy route not enabled", { status: 403 });
   }
 
+  // Add JWT authentication header
+  const authHeaders = await addJWTAuthHeader(req);
+  if (!authHeaders) {
+    return new Response("Authentication required", { status: 401 });
+  }
+
+  // Create new request with JWT token
+  const authedReq = new NextRequest(req.url, {
+    method: req.method,
+    headers: authHeaders,
+    body: req.body,
+  });
+
   const { DELETE } = initApiPassthrough({
     apiKey: process.env.LANGSMITH_API_KEY,
     apiUrl: urlAndRoute.url,
@@ -174,5 +302,5 @@ export async function DELETE(req: NextRequest, { params }: RequestParams) {
     disableWarningLog: true,
   });
 
-  return DELETE(req);
+  return DELETE(authedReq);
 }
