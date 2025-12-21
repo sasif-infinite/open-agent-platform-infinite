@@ -38,6 +38,7 @@ COPY apps/ ./apps/
 # COPY packages/ ./packages/
 COPY turbo.json ./
 
+
 RUN corepack enable && corepack prepare yarn@3.5.1 --activate
 RUN yarn install --immutable
 
