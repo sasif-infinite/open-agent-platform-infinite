@@ -3,6 +3,7 @@ import { useRag } from "../hooks/use-rag";
 import { useAuthContext } from "@/providers/Auth";
 import { useEffect } from "react";
 
+
 type RagContextType = ReturnType<typeof useRag>;
 
 const RagContext = createContext<RagContextType | null>(null);
