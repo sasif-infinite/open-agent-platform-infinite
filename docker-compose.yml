@@ -21,7 +21,6 @@ services:
       sh -lc "corepack enable &&
               corepack prepare yarn@3.5.1 --activate &&
               yarn workspace @open-agent-platform/web start"
-
   tool-agent:
     build:
       context: ../tool-agent
