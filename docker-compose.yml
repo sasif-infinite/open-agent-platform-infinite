@@ -17,7 +17,6 @@ services:
       - mcp
     environment:
       NODE_ENV: production
-    # Run the Next.js app in production mode using the image build artifacts
     command: >
       sh -lc "corepack enable &&
               corepack prepare yarn@3.5.1 --activate &&
