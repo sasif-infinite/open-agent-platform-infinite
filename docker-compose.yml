@@ -36,6 +36,7 @@ services:
       open-agent-network:
         ipv4_address: 172.23.0.12
 
+
   postgres:
     image: pgvector/pgvector:pg16
     container_name: langconnect-postgres
