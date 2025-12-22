@@ -1,5 +1,4 @@
 "use client";
-
 import AgentsInterface from "@/features/agents";
 import {
   Breadcrumb,
