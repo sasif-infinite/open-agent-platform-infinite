@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { generateJWTToken } from "@/lib/jwt-utils";
 
 // This will contain the object which contains the access token
 const MCP_TOKENS = process.env.MCP_TOKENS;
 const MCP_SERVER_URL = process.env.NEXT_PUBLIC_MCP_SERVER_URL;
 const MCP_AUTH_REQUIRED = process.env.NEXT_PUBLIC_MCP_AUTH_REQUIRED === "true";
 
-async function getSupabaseToken(req: NextRequest) {
+async function getSupabaseUser(req: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -26,56 +27,15 @@ async function getSupabaseToken(req: NextRequest) {
       },
     });
 
-    // Get the session which contains the access token
+    // Get the session which contains the user
     const {
       data: { session },
     } = await supabase.auth.getSession();
-    if (!session) {
-      return null;
-    }
-
-    return session.access_token;
+    
+    return session?.user || null;
   } catch (error) {
-    console.error("Error getting Supabase token:", error);
+    console.error("Error getting Supabase user:", error);
     return null;
-  }
-}
-
-async function getMcpAccessToken(supabaseToken: string, mcpServerUrl: URL) {
-  const mcpUrl = `${mcpServerUrl.href}/mcp`;
-  const mcpOauthUrl = `${mcpServerUrl.href}/oauth/token`;
-
-  try {
-    // Exchange Supabase token for MCP access token
-    const formData = new URLSearchParams();
-    formData.append("client_id", "mcp_default");
-    formData.append("subject_token", supabaseToken);
-    formData.append(
-      "grant_type",
-      "urn:ietf:params:oauth:grant-type:token-exchange",
-    );
-    formData.append("resource", mcpUrl);
-    formData.append(
-      "subject_token_type",
-      "urn:ietf:params:oauth:token-type:access_token",
-    );
-
-    const tokenResponse = await fetch(mcpOauthUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: formData.toString(),
-    });
-
-    if (tokenResponse.ok) {
-      const tokenData = await tokenResponse.json();
-      return tokenData.access_token;
-    } else {
-      console.error("Token exchange failed:", await tokenResponse.text());
-    }
-  } catch (e) {
-    console.error("Error during token exchange:", e);
   }
 }
 
@@ -119,51 +79,37 @@ export async function proxyRequest(req: NextRequest): Promise<Response> {
     }
   });
 
-  const mcpAccessTokenCookie = req.cookies.get("X-MCP-Access-Token")?.value;
-  // Authentication priority:
-  // 1. X-MCP-Access-Token header
-  // 2. X-MCP-Access-Token cookie
-  // 3. MCP_TOKENS environment variable
-  // 4. Supabase-JWT token exchange
-  let accessToken: string | null = null;
-
-  if (MCP_AUTH_REQUIRED) {
-    const supabaseToken = await getSupabaseToken(req);
-
-    if (mcpAccessTokenCookie) {
-      accessToken = mcpAccessTokenCookie;
-    } else if (MCP_TOKENS) {
-      // Try to use MCP_TOKENS environment variable
-      try {
-        const { access_token } = JSON.parse(MCP_TOKENS);
-        if (access_token) {
-          accessToken = access_token;
+  // Get user from Supabase session and generate JWT token
+  const user = await getSupabaseUser(req);
+  if (user) {
+    try {
+      const jwtToken = await generateJWTToken(
+        user.id,
+        user.email || "unknown@example.com",
+        {
+          name: user.user_metadata?.name || user.email,
         }
-      } catch (e) {
-        console.error("Failed to parse MCP_TOKENS env variable", e);
-      }
-    }
-
-    // If no token yet, try Supabase-JWT token exchange
-    if (!accessToken && supabaseToken && MCP_SERVER_URL) {
-      accessToken = await getMcpAccessToken(
-        supabaseToken,
-        new URL(MCP_SERVER_URL),
       );
-    }
-
-    // If we still don't have a token, return an error
-    if (!accessToken) {
+      
+      // Add JWT token to Authorization header
+      headers.set("Authorization", `Bearer ${jwtToken}`);
+    } catch (error) {
+      console.error("Error generating JWT token:", error);
       return new Response(
         JSON.stringify({
-          message: "Failed to obtain access token from any source.",
+          message: "Failed to generate authentication token",
         }),
-        { status: 401, headers: { "Content-Type": "application/json" } },
+        { status: 500, headers: { "Content-Type": "application/json" } },
       );
     }
-
-    // Set the Authorization header with the token
-    headers.set("Authorization", `Bearer ${accessToken}`);
+  } else {
+    // No user session found - return unauthorized
+    return new Response(
+      JSON.stringify({
+        message: "Authentication required",
+      }),
+      { status: 401, headers: { "Content-Type": "application/json" } },
+    );
   }
 
   headers.set("Accept", "application/json, text/event-stream");
@@ -208,22 +154,6 @@ export async function proxyRequest(req: NextRequest): Promise<Response> {
     response.headers.forEach((value, key) => {
       newResponse.headers.set(key, value);
     });
-
-    if (MCP_AUTH_REQUIRED) {
-      // If we used the Supabase token exchange, add the access token to the response
-      // so it can be used in future requests
-      if (!mcpAccessTokenCookie && !MCP_TOKENS && accessToken) {
-        // Set a cookie with the access token that will be included in future requests
-        newResponse.cookies.set({
-          name: "X-MCP-Access-Token",
-          value: accessToken,
-          httpOnly: false, // Allow JavaScript access so it can be read for headers
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          maxAge: 3600, // 1 hour expiration
-        });
-      }
-    }
 
     return newResponse;
   } catch (error) {
